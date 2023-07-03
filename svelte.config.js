@@ -9,7 +9,9 @@ const config = {
 
 	kit: {
 		adapter: adapter(),
-		paths: dev ? '' : process.env.BASE_PATH
+		paths: {
+			base: dev ? '' : '/raincheck'
+		}
 	}
 };
 
