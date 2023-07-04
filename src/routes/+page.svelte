@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	// TEST WITH ASSA MOROCCO
-
 	type City = {
 		city: string;
 		admin_name: string;
@@ -13,35 +11,12 @@
 		lat: number;
 		lng: number;
 	};
+
 	type PrecipitationResults = {
 		dates: Date[];
 		values: number[];
 	};
 
-	// const handleMouse = (e: WheelEvent) => {
-	// const entriesScrolled = Math.floor(e.deltaY / 54);
-
-	// startIndex = startIndex + entriesScrolled;
-	// startIndex =
-	// 	startIndex < 0
-	// 		? 0
-	// 		: startIndex > filteredCitiesLength - entriesAtATime
-	// 		? filteredCitiesLength - entriesAtATime
-	// 		: startIndex;
-	// endIndex = endIndex + entriesScrolled;
-	// endIndex =
-	// 	endIndex < entriesAtATime
-	// 		? entriesAtATime
-	// 		: endIndex > filteredCitiesLength
-	// 		? filteredCitiesLength
-	// 		: endIndex;
-	// 	console.log('deltaY:', e.deltaY);
-	// 	console.log('MOUSE EVENT');
-	// };
-
-	// const citiesPromise =
-	//     fetch("./worldcities.json")
-	//     .then((response) => response.json())
 	async function getAllCities(): Promise<City[]> {
 		const res = await fetch('./worldcities.json');
 		const cities: City[] = await res.json();
@@ -49,42 +24,56 @@
 			a.city_ascii < b.city_ascii ? -1 : a.city_ascii > b.city_ascii ? 1 : 0
 		);
 	}
-
+	// whether component is mounted
 	let mounted = false;
-
-	const entriesAtATime = 10;
-	let userCityInput: string = '';
-	let allCities: City[] = [];
+	// whether list(drop down) is open
 	let listActive = false;
+
+	// how many entries should be shown at a time
+	const entriesAtATime = 7;
+
+	// what user inputs in the text box
+	let userCityInput: string = '';
+	// all cities loaded from the .json file
+	let allCities: City[] = [];
+	// city that has been clicked/chosen by the user
+
 	let finalChoice: City;
+	// startIndex and endIndex control which cities are shown in the drop down
 	let startIndex = 0;
 	let endIndex = entriesAtATime;
 
-	let resultString = '';
+	// results string saying how long ago the last rain was
+	let resultString = 'search for a city to find out when it last rained';
 
+	// number of days to look in the past
 	const pastDays = 61;
 
-	let selectedEntryIndex = -1; // which entry is focused by keyboard
+	// which entry is focused by keyboard
+	let selectedEntryIndex = -1;
+	// the whole autocomplete form:
+	let autocompleteForm: HTMLElement;
+
+	$: filteredCities = allCities.filter((city) =>
+		city.city_ascii.toLowerCase().startsWith(userCityInput.toLowerCase())
+	);
+	$: filteredCitiesWindow = filteredCities.slice(startIndex, endIndex);
+	$: filteredCitiesLength = filteredCities.length;
+	$: listOpen = mounted && filteredCitiesWindow.length > 0 && listActive;
 
 	onMount(async () => {
 		allCities = await getAllCities();
 		mounted = true;
 	});
 
-	$: filteredCities = allCities.filter((city) =>
-		city.city_ascii.toLowerCase().startsWith(userCityInput.toLowerCase())
-	);
-	$: filteredCitiesWindow = filteredCities.slice(startIndex, endIndex);
-	$: allCitiesLength = allCities.length;
-	$: filteredCitiesLength = filteredCities.length;
-	$: listOpen = mounted && filteredCitiesWindow.length > 0 && listActive;
-
-	const chooseCity = (city: City) => {
+	const chooseCity = async (city: City) => {
 		finalChoice = city;
 		userCityInput = city.city_ascii;
 		unfocusAutocomplete();
+		await calculateResults();
 	};
 
+	// unfocuses the autocomplete text box
 	const unfocusAutocomplete = () => {
 		selectedEntryIndex = -1;
 		listActive = false;
@@ -95,6 +84,8 @@
 	const handleFocus = () => {
 		listActive = true;
 	};
+
+	// returns emoji for country code
 	function getFlagEmoji(countryCode: string) {
 		const codePoints = countryCode
 			.toUpperCase()
@@ -103,15 +94,13 @@
 		return String.fromCodePoint(...codePoints);
 	}
 
+	// returns nicely formatted city string with emoji and region
 	const getCityString = (city: City) => {
 		if (city) return `${getFlagEmoji(city.iso2)} ${city.city}, ${city.admin_name}`;
-
-		return 'NOTHING';
+		return '';
 	};
 
-	let autocompleteListEl: HTMLElement;
-	let autocompleteForm: HTMLElement;
-
+	// gets data from API about precipitation in city
 	const getResults = async (city: City): Promise<PrecipitationResults> => {
 		const lat = city.lat;
 		const long = city.lng;
@@ -126,6 +115,7 @@
 		};
 	};
 
+	// returns date of latest precipitation
 	const getLatestPrecipitationDate = (precipitations: PrecipitationResults) => {
 		for (let i = precipitations.values.length - 1; i > 0; i--) {
 			if (precipitations.values[i] > 0) {
@@ -135,14 +125,13 @@
 		return null;
 	};
 
+	// formats the result string
 	const getResultString = (latestPrecipitation: Date | undefined | null, city: string) => {
 		if (!latestPrecipitation) {
 			return "It hasn't rained for more than 2 months...";
 		}
 		const today = new Date();
 		const diffMilliseconds = today.valueOf() - latestPrecipitation.valueOf();
-		console.log(diffMilliseconds);
-		console.log('latest:', latestPrecipitation);
 		const diffDays = Math.floor(diffMilliseconds / 1000 / 60 / 60 / 24);
 
 		if (diffDays === 0) {
@@ -157,23 +146,18 @@
 		return `Looks like it has been ${diffDays} days since the last rain in ${city} 🥵`;
 	};
 
-	const test = async () => {
+	const calculateResults = async () => {
 		const precipitations = await getResults(finalChoice);
 		const latestPrecipitation = getLatestPrecipitationDate(precipitations);
 
 		resultString = getResultString(latestPrecipitation, finalChoice.city);
-		console.log(resultString);
 	};
 
 	const handleGlobalClick = (event: MouseEvent) => {
 		const isClickInsideList = autocompleteForm?.contains(event.target as Node) ?? false;
-
 		if (!isClickInsideList) {
 			listActive = false;
 		}
-		// if ((e.target as HTMLElement).closest('.autocomplete') === null) {
-		// 	console.log('not clsoest');
-		// }
 	};
 
 	const handleInputKeys = (event: KeyboardEvent) => {
@@ -196,153 +180,55 @@
 	const handleSubmit = () => {
 		console.log('submitted city:', finalChoice);
 	};
-
-	// onMount(() => {
-	// 	document.addEventListener('click', handleGlobalClick);
-	// });
-
-	// onDestroy(() => document.removeEventListener('click', handleGlobalClick));
 </script>
 
 <svelte:document on:click={handleGlobalClick} />
-<div class="main">
-	<h1>Welcome to raincheck</h1>
-	<p>number of cities: {allCitiesLength}</p>
-	<p>number of filtered cities: {filteredCitiesLength}</p>
+<h1>welcome to raincheck</h1>
 
-	<form bind:this={autocompleteForm} id="autocomplete-form" on:submit|preventDefault={handleSubmit}>
-		<div class="autocomplete">
-			<input
-				autocomplete="off"
-				on:keydown={handleInputKeys}
-				on:focus={handleFocus}
-				on:change={() => {
-					startIndex = 0;
-					endIndex = entriesAtATime;
-				}}
-				placeholder="Search City"
-				id="city-select"
-				type="text"
-				bind:value={userCityInput}
-			/>
-		</div>
+<form bind:this={autocompleteForm} id="autocomplete-form" on:submit|preventDefault={handleSubmit}>
+	<div class="autocomplete stack">
+		<input
+			autocomplete="off"
+			type="text"
+			placeholder="search city"
+			id="city-select"
+			on:keydown={handleInputKeys}
+			on:focus={handleFocus}
+			on:change={() => {
+				startIndex = 0;
+				endIndex = entriesAtATime;
+			}}
+			bind:value={userCityInput}
+		/>
+	</div>
 
-		{#if listOpen}
-			<ul id="autocomplete-items-list" bind:this={autocompleteListEl}>
-				{#each filteredCitiesWindow as city, index}
-					<li
-						class="autocomplete-items"
-						class:selected={index === selectedEntryIndex}
-						on:click={() => chooseCity(city)}
-					>
-						{getCityString(city)}
-					</li>
-					<!-- {#each { length: 80 } as _, i} -->
-					<!-- <p>{i}, {filteredCities.length}</p> -->
-					<!-- {#if i < filteredCities.length} -->
-					<!-- <option value={city.city}>
-						{city.city}
-					</option> -->
-					<!-- {/if} -->
-				{/each}
-			</ul>
-			<!-- <select on:wheel={handleMouse} /> -->
-		{/if}
-		<!-- <button type="submit">Test</button> -->
-	</form>
-	<p id="user-chose">User chose: {getCityString(finalChoice)}</p>
-	<button disabled={!finalChoice} on:click={test}>test</button>
-	{#if resultString}
-		<div>
-			<span>{resultString}</span>
-		</div>
+	{#if listOpen}
+		<ul id="autocomplete-items-list">
+			{#each filteredCitiesWindow as city, index}
+				<li
+					class="autocomplete-items"
+					class:selected={index === selectedEntryIndex}
+					on:click={() => chooseCity(city)}
+					on:keydown={(e) => e.code === 'Enter' && chooseCity(city)}
+				>
+					{getCityString(city)}
+				</li>
+			{/each}
+		</ul>
 	{/if}
-</div>
+</form>
+{#if finalChoice}
+	<div class="stack">
+		<p>{getCityString(finalChoice)}</p>
+	</div>
+{/if}
+{#if resultString}
+	<div class="stack">
+		<span>{resultString}</span>
+	</div>
+{/if}
 
 <style>
-	/* RESETS */
-	*,
-	*::before,
-	*::after {
-		box-sizing: border-box;
-	}
-	*:focus {
-		outline: 3px dashed #228bec;
-		outline-offset: 0.2rem;
-	}
-	html {
-		font: 62.5% / 1.15 sans-serif;
-	}
-	h1,
-	h2 {
-		margin-bottom: 0;
-	}
-	ul {
-		list-style: none;
-		padding: 0;
-	}
-	button {
-		border: none;
-		margin: 0;
-		padding: 0;
-		width: auto;
-		overflow: visible;
-		background: transparent;
-		color: inherit;
-		font: inherit;
-		line-height: normal;
-		-webkit-font-smoothing: inherit;
-		-moz-osx-font-smoothing: inherit;
-		appearance: none;
-	}
-	button::-moz-focus-inner {
-		border: 0;
-	}
-	button,
-	input,
-	optGroup,
-	select,
-	textarea {
-		font-family: inherit;
-		font-size: 100%;
-		line-height: 1.15;
-		margin: 0;
-	}
-	button,
-	input {
-		overflow: visible;
-	}
-	input[type='text'] {
-		border-radius: 0;
-	}
-	body {
-		width: 100%;
-		max-width: 68rem;
-		margin: 0 auto;
-		font: 1.6rem/1.25 Arial, sans-serif;
-		background-color: #f5f5f5;
-		color: #4d4d4d;
-	}
-	@media screen and (min-width: 620px) {
-		body {
-			font-size: 1.9rem;
-			line-height: 1.31579;
-		}
-	}
-	/* END RESETS */
-	input {
-		border: 2px black solid;
-		line-height: 1.5rem;
-		padding: 0.3rem;
-		width: 100%;
-	}
-	button {
-		background-color: #7c7c7c;
-		padding: 0.3rem;
-		cursor: pointer;
-		border: 2px lightgrey solid;
-	}
-
 	li.autocomplete-items {
 		list-style: none;
 		border-bottom: 1px solid #d4d4d4;
@@ -353,6 +239,7 @@
 		padding: 10px;
 		cursor: pointer;
 		background-color: #fff;
+		width: 100%;
 	}
 
 	li.autocomplete-items:hover {
@@ -367,9 +254,7 @@
 		position: absolute;
 		margin: 0;
 		padding: 0;
-		top: 2.3rem;
-		width: 15rem;
-		/* max-height: 20rem; */
+		width: 100%;
 		border: 1px solid #ddd;
 		background-color: #ddd;
 	}
@@ -377,16 +262,18 @@
 	div.autocomplete {
 		position: relative;
 		display: inline-block;
-		width: 15rem;
+		width: inherit;
 	}
-
+	.stack {
+		margin-top: 2rem;
+	}
 	#autocomplete-form {
 		position: relative;
+		display: block;
+		width: 50rem;
 	}
 
-	.main {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
+	input#city-select {
+		width: inherit;
 	}
 </style>
